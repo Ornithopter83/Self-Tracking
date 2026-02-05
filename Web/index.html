@@ -1,0 +1,166 @@
+﻿<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PoseLinker Engine</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
+    <style>
+        body {
+            margin: 0;
+            background: #1a1a1a;
+            color: white;
+            font-family: sans-serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        #video-container {
+            position: relative;
+            width: 90%;
+            max-width: 640px;
+            border: 2px solid #444;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        video {
+            width: 100%;
+            display: block;
+            transform: scaleX(-1);
+            background: #000;
+        }
+
+        #status {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.6);
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            z-index: 10;
+        }
+
+        .mode-indicator {
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #00d4ff;
+        }
+    </style>
+</head>
+<body>
+    <div id="mode" class="mode-indicator">초기화 중...</div>
+    <div id="video-container">
+        <div id="status">상태: 대기 중</div>
+        <video id="localVideo" autoplay playsinline muted></video>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomID = urlParams.get('room');
+        const isReceiver = urlParams.get('mode') === 'pc';
+
+        const statusText = document.getElementById('status');
+        const modeText = document.getElementById('mode');
+        const videoElement = document.getElementById('localVideo');
+
+        // 1. PeerJS 설정
+        const peer = new Peer(isReceiver ? roomID : null);
+
+        modeText.innerText = isReceiver ? "💻 PC 수신 모드" : "📱 스마트폰 송신 모드";
+
+        peer.on('open', (id) => {
+            if (isReceiver) {
+                statusText.innerText = "상태: 스마트폰 연결 대기 중...";
+            } else {
+                statusText.innerText = "상태: 카메라 준비 중...";
+                startCamera();
+            }
+        });
+
+        // 2. [스마트폰] 전용: 카메라 가동 및 송출
+        async function startCamera() {
+            if (isReceiver) return; // PC 모드라면 절대 실행 안 함
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "user", width: 640, height: 480 },
+                    audio: false
+                });
+                videoElement.srcObject = stream;
+
+                // PC에 연결 시도
+                const call = peer.call(roomID, stream);
+                statusText.innerText = "상태: 영상 송출 중";
+            } catch (err) {
+                statusText.innerText = "오류: 카메라 권한 필요 (HTTPS 확인)";
+                console.error(err);
+            }
+        }
+
+        // 3. [PC] 전용: 영상 수신 및 MediaPipe 분석
+        if (isReceiver) {
+            peer.on('call', (call) => {
+                call.answer(); // 응답
+                statusText.innerText = "상태: 스트림 연결됨";
+
+                call.on('stream', (remoteStream) => {
+                    videoElement.srcObject = remoteStream;
+                    statusText.innerText = "상태: 실시간 분석 중...";
+                    initMediaPipe(videoElement);
+                });
+            });
+        }
+
+        // 4. [공통/PC 중심] MediaPipe Pose 분석 로직
+        function initMediaPipe(video) {
+            const pose = new Pose({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+            });
+
+            pose.setOptions({
+                modelComplexity: 1,
+                smoothLandmarks: true,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+
+            pose.onResults((results) => {
+                if (!results.poseLandmarks) return;
+
+                // [중요] C# WinForm(WebView2)으로 데이터 전송
+                if (window.chrome && window.chrome.webview) {
+                    window.chrome.webview.postMessage({
+                        type: "POSE_DATA",
+                        landmarks: results.poseLandmarks
+                    });
+                }
+            });
+
+            // 프레임 분석 루프
+            async function detectionLoop() {
+                if (video.paused || video.ended) return;
+                await pose.send({ image: video });
+                requestAnimationFrame(detectionLoop);
+            }
+
+            video.onloadedmetadata = () => {
+                video.play();
+                detectionLoop();
+            };
+        }
+
+        // 에러 처리
+        peer.on('error', (err) => {
+            statusText.innerText = "Peer 오류: " + err.type;
+            console.error(err);
+        });
+    </script>
+</body>
+</html>
