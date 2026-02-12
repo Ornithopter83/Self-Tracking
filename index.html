@@ -106,15 +106,24 @@
 
         // 3. [PC] 전용: 영상 수신 및 MediaPipe 분석
         if (isReceiver) {
-            peer.on('call', (call) => {
-                call.answer(); // 응답
-                statusText.innerText = "상태: 스트림 연결됨";
+            peer.on('open', (id) => {
+                if (isReceiver) {
+                    // [PC 모드]
+                    modeText.innerText = "💻 PC 수신 모드 (ID: " + id + ")";
+                    statusText.innerText = "상태: 스마트폰 연결 대기 중...";
+                    // PC는 절대로 startCamera()를 호출하지 않습니다.
+                } else {
+                    // [스마트폰 모드]
+                    modeText.innerText = "📱 스마트폰 송신 모드";
+                    statusText.innerText = "상태: 카메라 권한 확인 중...";
 
-                call.on('stream', (remoteStream) => {
-                    videoElement.srcObject = remoteStream;
-                    statusText.innerText = "상태: 실시간 분석 중...";
-                    initMediaPipe(videoElement);
-                });
+                    // 스마트폰에서만 카메라를 켭니다.
+                    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                        startCamera();
+                    } else {
+                        statusText.innerText = "오류: 이 브라우저는 카메라를 지원하지 않습니다.";
+                    }
+                }
             });
         }
 
