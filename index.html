@@ -143,12 +143,18 @@
             pose.onResults((results) => {
                 if (!results.poseLandmarks) return;
 
-                // [중요] C# WinForm(WebView2)으로 데이터 전송
+                // 1. 웹 화면에 데이터 발생 여부 표시 (눈으로 확인용)
+                const nose = results.poseLandmarks[0];
+                statusText.innerText = `데이터 송신 중: Nose X(${nose.x.toFixed(2)})`;
+
+                // 2. C#으로 전송
                 if (window.chrome && window.chrome.webview) {
-                    window.chrome.webview.postMessage({
+                    const payload = {
                         type: "POSE_DATA",
                         landmarks: results.poseLandmarks
-                    });
+                    };
+                    // 중요: 객체를 직접 보냅니다.
+                    window.chrome.webview.postMessage(payload);
                 }
             });
 
