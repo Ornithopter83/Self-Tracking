@@ -75,31 +75,29 @@ namespace Measure_UsingOwnCam
         // 핵심: 웹에서 보낸 관절 데이터를 처리하는 메서드
         private void OnWebMessageReceived(object sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
+            // 1. 가장 먼저 원시 JSON 문자열을 가져옵니다.
+            string json = e.WebMessageAsJson; // WebMessageAsJson 속성을 사용해 보세요.
+        
+            // 2. 창 제목에 일단 찍어봅니다 (데이터가 들어오는지 확인)
+            this.Invoke(new Action(() => {
+                this.Text = $"데이터 수신 시간: {DateTime.Now:HH:mm:ss}";
+            }));
+        
             try
             {
-                string json = e.TryGetWebMessageAsString();
-                
-                // JSON 데이터를 C# 객체로 파싱
+                // 3. 파싱 시도
                 var poseData = JsonConvert.DeserializeObject<PoseDataPayload>(json);
-
-                if (poseData?.type == "POSE_DATA")
+                if (poseData != null && poseData.landmarks != null)
                 {
-                    // 여기서 관절 데이터를 활용합니다.
-                    // 예: 0번 관절(코)의 X좌표 확인
+                    // 성공 시 로직
                     var nose = poseData.landmarks[0];
-                    
-                    // UI에 좌표 정보를 아주 간단히 출력해봅니다 (성능 확인용)
-                    this.BeginInvoke(new Action(() => {
-                        this.Text = $"Nose: X={nose.x:F2}, Y={nose.y:F2}";
-                    }));
-
-                    // [추후 계획] 이 데이터를 Unity DLL의 이벤트로 전달함
-                    // OnPoseUpdated?.Invoke(poseData.landmarks);
+                    Console.WriteLine($"Nose Y: {nose.y}");
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Data Parsing Error: " + ex.Message);
+                // 파싱 에러가 있다면 여기에 찍힙니다.
+                Console.WriteLine("JSON 파싱 에러: " + ex.Message);
             }
         }
     }

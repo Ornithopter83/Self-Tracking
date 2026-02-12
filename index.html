@@ -1,181 +1,136 @@
 ﻿<!DOCTYPE html>
-<html lang="ko">
+<html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PoseLinker Engine</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
     <style>
         body {
             margin: 0;
-            background: #1a1a1a;
+            background: #000;
             color: white;
             font-family: sans-serif;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
+            text-align: center;
         }
 
-        #video-container {
-            position: relative;
-            width: 90%;
-            max-width: 640px;
-            border: 2px solid #444;
-            border-radius: 10px;
-            overflow: hidden;
+        #log {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(0,0,0,0.8);
+            font-size: 12px;
+            color: #0f0;
+            text-align: left;
+            padding: 10px;
+            z-index: 100;
+            max-height: 200px;
+            overflow-y: auto;
         }
 
         video {
             width: 100%;
-            display: block;
+            max-width: 480px;
             transform: scaleX(-1);
-            background: #000;
+            border: 1px solid #333;
         }
 
-        #status {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            background: rgba(0,0,0,0.6);
-            padding: 5px 10px;
-            border-radius: 5px;
-            font-size: 12px;
-            z-index: 10;
-        }
-
-        .mode-indicator {
-            margin-bottom: 10px;
+        .indicator {
+            padding: 20px;
+            font-size: 20px;
             font-weight: bold;
-            color: #00d4ff;
         }
     </style>
 </head>
 <body>
-    <div id="mode" class="mode-indicator">초기화 중...</div>
-    <div id="video-container">
-        <div id="status">상태: 대기 중</div>
-        <video id="localVideo" autoplay playsinline muted></video>
-    </div>
+    <div id="log">로그 기다리는 중...</div>
+    <div id="mode" class="indicator">초기화 중...</div>
+    <video id="webcam" autoplay playsinline muted></video>
 
     <script>
+        const logArea = document.getElementById('log');
+        function addLog(msg) {
+            const div = document.createElement('div');
+            div.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            logArea.insertBefore(div, logArea.firstChild);
+        }
+
         const urlParams = new URLSearchParams(window.location.search);
         const roomID = urlParams.get('room');
         const isReceiver = urlParams.get('mode') === 'pc';
+        const videoElement = document.getElementById('webcam');
 
-        const statusText = document.getElementById('status');
-        const modeText = document.getElementById('mode');
-        const videoElement = document.getElementById('localVideo');
+        addLog(`모드 확인: ${isReceiver ? "PC" : "Mobile"}`);
+        addLog(`Room ID: ${roomID}`);
 
-        // 1. PeerJS 설정
         const peer = new Peer(isReceiver ? roomID : null);
 
-        modeText.innerText = isReceiver ? "💻 PC 수신 모드" : "📱 스마트폰 송신 모드";
-
         peer.on('open', (id) => {
-            if (isReceiver) {
-                statusText.innerText = "상태: 스마트폰 연결 대기 중...";
-            } else {
-                statusText.innerText = "상태: 카메라 준비 중...";
-                startCamera();
-            }
+            addLog(`PeerJS 서버 연결 성공 (ID: ${id})`);
+            if (!isReceiver) startMobileCamera();
         });
 
-        // 2. [스마트폰] 전용: 카메라 가동 및 송출
-        async function startCamera() {
-            if (isReceiver) return; // PC 모드라면 절대 실행 안 함
-
+        // [스마트폰 전용] 카메라 시작
+        async function startMobileCamera() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: "user", width: 640, height: 480 },
-                    audio: false
-                });
+                addLog("카메라 권한 요청 중...");
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
                 videoElement.srcObject = stream;
+                addLog("카메라 연결 성공! 영상을 PC로 보냅니다.");
 
-                // PC에 연결 시도
                 const call = peer.call(roomID, stream);
-                statusText.innerText = "상태: 영상 송출 중";
+                call.on('stream', () => addLog("PC와 영상 스트림 연결됨"));
             } catch (err) {
-                statusText.innerText = "오류: 카메라 권한 필요 (HTTPS 확인)";
-                console.error(err);
+                addLog(`카메라 에러: ${err.name}`);
             }
         }
 
-        // 3. [PC] 전용: 영상 수신 및 MediaPipe 분석
-        if (isReceiver) {
-            peer.on('open', (id) => {
-                if (isReceiver) {
-                    // [PC 모드]
-                    modeText.innerText = "💻 PC 수신 모드 (ID: " + id + ")";
-                    statusText.innerText = "상태: 스마트폰 연결 대기 중...";
-                    // PC는 절대로 startCamera()를 호출하지 않습니다.
-                } else {
-                    // [스마트폰 모드]
-                    modeText.innerText = "📱 스마트폰 송신 모드";
-                    statusText.innerText = "상태: 카메라 권한 확인 중...";
-
-                    // 스마트폰에서만 카메라를 켭니다.
-                    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                        startCamera();
-                    } else {
-                        statusText.innerText = "오류: 이 브라우저는 카메라를 지원하지 않습니다.";
-                    }
-                }
+        // [PC 전용] 영상 수신 시 분석 시작
+        peer.on('call', (call) => {
+            addLog("스마트폰으로부터 전화 수신!");
+            call.answer();
+            call.on('stream', (remoteStream) => {
+                addLog("영상을 받았습니다. MediaPipe 로딩 시작...");
+                videoElement.srcObject = remoteStream;
+                startMediaPipe();
             });
-        }
-
-        // 4. [공통/PC 중심] MediaPipe Pose 분석 로직
-        function initMediaPipe(video) {
-            const pose = new Pose({
-                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-            });
-
-            pose.setOptions({
-                modelComplexity: 1,
-                smoothLandmarks: true,
-                minDetectionConfidence: 0.5,
-                minTrackingConfidence: 0.5
-            });
-
-            pose.onResults((results) => {
-                if (!results.poseLandmarks) return;
-
-                // 1. 웹 화면에 데이터 발생 여부 표시 (눈으로 확인용)
-                const nose = results.poseLandmarks[0];
-                statusText.innerText = `데이터 송신 중: Nose X(${nose.x.toFixed(2)})`;
-
-                // 2. C#으로 전송
-                if (window.chrome && window.chrome.webview) {
-                    const payload = {
-                        type: "POSE_DATA",
-                        landmarks: results.poseLandmarks
-                    };
-                    // 중요: 객체를 직접 보냅니다.
-                    window.chrome.webview.postMessage(payload);
-                }
-            });
-
-            // 프레임 분석 루프
-            async function detectionLoop() {
-                if (video.paused || video.ended) return;
-                await pose.send({ image: video });
-                requestAnimationFrame(detectionLoop);
-            }
-
-            video.onloadedmetadata = () => {
-                video.play();
-                detectionLoop();
-            };
-        }
-
-        // 에러 처리
-        peer.on('error', (err) => {
-            statusText.innerText = "Peer 오류: " + err.type;
-            console.error(err);
         });
+
+        async function startMediaPipe() {
+            try {
+                const pose = new Pose({
+                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+                });
+
+                pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5 });
+
+                pose.onResults((results) => {
+                    if (results.poseLandmarks) {
+                        const nose = results.poseLandmarks[0];
+                        // PC 화면 제목에 좌표 표시
+                        document.getElementById('mode').innerText = `분석 중: Nose X(${nose.x.toFixed(2)})`;
+
+                        // C#으로 데이터 전송
+                        if (window.chrome && window.chrome.webview) {
+                            window.chrome.webview.postMessage({ type: "POSE_DATA", landmarks: results.poseLandmarks });
+                        }
+                    }
+                });
+
+                addLog("MediaPipe Pose 모델 로딩 완료.");
+
+                async function frameLoop() {
+                    await pose.send({ image: videoElement });
+                    requestAnimationFrame(frameLoop);
+                }
+                videoElement.onloadedmetadata = frameLoop;
+
+            } catch (err) {
+                addLog(`MediaPipe 에러: ${err.message}`);
+            }
+        }
+
+        peer.on('error', (err) => addLog(`Peer 오류: ${err.type}`));
     </script>
 </body>
 </html>
