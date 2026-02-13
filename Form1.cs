@@ -75,32 +75,54 @@ namespace Measure_UsingOwnCam
         // 핵심: 웹에서 보낸 관절 데이터를 처리하는 메서드
         private void OnWebMessageReceived(object sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
-            // 1. 가장 먼저 원시 JSON 문자열을 가져옵니다.
-            string json = e.WebMessageAsJson; // WebMessageAsJson 속성을 사용해 보세요.
-        
-            // 2. 창 제목에 일단 찍어봅니다 (데이터가 들어오는지 확인)
-            this.Invoke(new Action(() => {
-                this.Text = $"데이터 수신 시간: {DateTime.Now:HH:mm:ss}";
-            }));
-        
             try
             {
-                // 3. 파싱 시도
-                var poseData = JsonConvert.DeserializeObject<PoseDataPayload>(json);
-                if (poseData != null && poseData.landmarks != null)
+                string json = e.TryGetWebMessageAsString();
+                dynamic data = JsonConvert.DeserializeObject(json);
+                string type = data.type;
+        
+                if (type == "RESIZE_WINDOW")
                 {
-                    // 성공 시 로직
-                    var nose = poseData.landmarks[0];
-                    Console.WriteLine($"Nose Y: {nose.y}");
+                    float vWidth = (float)data.width;
+                    float vHeight = (float)data.height;
+        
+                    if (vWidth <= 0 || vHeight <= 0) return;
+        
+                    this.BeginInvoke(new Action(() => {
+                        // 1. 현재 모니터의 작업 영역 크기 가져오기
+                        Rectangle screenRect = Screen.PrimaryScreen.WorkingArea;
+                        float maxWidth = screenRect.Width * 0.7f;  // 화면의 70%
+                        float maxHeight = screenRect.Height * 0.7f;
+        
+                        // 2. 비율 유지하며 스케일 계산
+                        float scale = Math.Min(maxWidth / vWidth, maxHeight / vHeight);
+                        
+                        // 만약 영상이 화면보다 작다면 확대하지 않고 원본 유지 (scale = 1.0)
+                        if (scale > 1.0f) scale = 1.0f;
+        
+                        int targetWidth = (int)(vWidth * scale);
+                        int targetHeight = (int)(vHeight * scale);
+        
+                        // 3. 최소 크기 보장 (에러 방지)
+                        targetWidth = Math.Max(targetWidth, 320);
+                        targetHeight = Math.Max(targetHeight, 240);
+        
+                        // 4. 안전하게 적용
+                        this.ClientSize = new Size(targetWidth, targetHeight);
+                        wvReceiver.Size = this.ClientSize; // DockStyle이 Fill이 아닐 경우 대비
+                        this.CenterToScreen();
+                        
+                        Console.WriteLine($"Resized to: {targetWidth}x{targetHeight} (Scale: {scale:F2})");
+                    }));
                 }
+                // ... POSE_DATA 처리
             }
             catch (Exception ex)
             {
-                // 파싱 에러가 있다면 여기에 찍힙니다.
-                Console.WriteLine("JSON 파싱 에러: " + ex.Message);
+                Console.WriteLine("Resize Error: " + ex.Message);
             }
         }
-    }
+        }
     // 낱개 관절 좌표 정보
     public class PoseLandmark
     {

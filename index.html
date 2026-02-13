@@ -140,7 +140,18 @@
                     videoElement.play();
                     frameLoop(); // 분석 시작
                 };
-
+                videoElement.onplaying = () => { // 영상이 실제로 화면에 그려지기 시작할 때
+                    setTimeout(() => {
+                        const payload = {
+                            type: "RESIZE_WINDOW",
+                            width: videoElement.videoWidth,
+                            height: videoElement.videoHeight
+                        };
+                        if (window.chrome && window.chrome.webview) {
+                            window.chrome.webview.postMessage(payload);
+                        }
+                    }, 500); // 0.5초 대기 후 정확한 해상도 전송
+                };
 
             } catch (err) {
                 addLog(`MediaPipe 에러: ${err.message}`);
