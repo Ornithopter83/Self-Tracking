@@ -30,10 +30,8 @@ namespace Measure_UsingOwnCam
 		private void InitializeComponent ()
 		{
 			this.pbQRCode = new System.Windows.Forms.PictureBox();
-			this.pbVideoPreview = new System.Windows.Forms.PictureBox();
 			this.wvReceiver = new Microsoft.Web.WebView2.WinForms.WebView2();
 			((System.ComponentModel.ISupportInitialize)(this.pbQRCode)).BeginInit();
-			((System.ComponentModel.ISupportInitialize)(this.pbVideoPreview)).BeginInit();
 			((System.ComponentModel.ISupportInitialize)(this.wvReceiver)).BeginInit();
 			this.SuspendLayout();
 			// 
@@ -45,23 +43,14 @@ namespace Measure_UsingOwnCam
 			this.pbQRCode.TabIndex = 0;
 			this.pbQRCode.TabStop = false;
 			// 
-			// pbVideoPreview
-			// 
-			this.pbVideoPreview.Location = new System.Drawing.Point(13, 13);
-			this.pbVideoPreview.Name = "pbVideoPreview";
-			this.pbVideoPreview.Size = new System.Drawing.Size(640, 480);
-			this.pbVideoPreview.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
-			this.pbVideoPreview.TabIndex = 1;
-			this.pbVideoPreview.TabStop = false;
-			// 
 			// wvReceiver
 			// 
 			this.wvReceiver.AllowExternalDrop = true;
 			this.wvReceiver.CreationProperties = null;
 			this.wvReceiver.DefaultBackgroundColor = System.Drawing.Color.White;
-			this.wvReceiver.Location = new System.Drawing.Point(708, 13);
+			this.wvReceiver.Location = new System.Drawing.Point(12, 12);
 			this.wvReceiver.Name = "wvReceiver";
-			this.wvReceiver.Size = new System.Drawing.Size(171, 149);
+			this.wvReceiver.Size = new System.Drawing.Size(639, 481);
 			this.wvReceiver.TabIndex = 2;
 			this.wvReceiver.ZoomFactor = 1D;
 			// 
@@ -71,12 +60,10 @@ namespace Measure_UsingOwnCam
 			this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
 			this.ClientSize = new System.Drawing.Size(951, 509);
 			this.Controls.Add(this.wvReceiver);
-			this.Controls.Add(this.pbVideoPreview);
 			this.Controls.Add(this.pbQRCode);
 			this.Name = "Form1";
 			this.Text = "Form1";
 			((System.ComponentModel.ISupportInitialize)(this.pbQRCode)).EndInit();
-			((System.ComponentModel.ISupportInitialize)(this.pbVideoPreview)).EndInit();
 			((System.ComponentModel.ISupportInitialize)(this.wvReceiver)).EndInit();
 			this.ResumeLayout(false);
 
@@ -85,7 +72,6 @@ namespace Measure_UsingOwnCam
 		#endregion
 
 		private System.Windows.Forms.PictureBox pbQRCode;
-		private System.Windows.Forms.PictureBox pbVideoPreview;
 		private Microsoft.Web.WebView2.WinForms.WebView2 wvReceiver;
 	}
 }

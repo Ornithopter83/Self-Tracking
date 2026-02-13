@@ -123,7 +123,24 @@
                     await pose.send({ image: videoElement });
                     requestAnimationFrame(frameLoop);
                 }
-                videoElement.onloadedmetadata = frameLoop;
+                videoElement.onloadedmetadata = () => {
+                    // 1. 영상의 실제 크기 가져오기
+                    const videoWidth = videoElement.videoWidth;
+                    const videoHeight = videoElement.videoHeight;
+
+                    // 2. C#으로 크기 정보 전송
+                    if (window.chrome && window.chrome.webview) {
+                        window.chrome.webview.postMessage({
+                            type: "RESIZE_WINDOW",
+                            width: videoWidth,
+                            height: videoHeight
+                        });
+                    }
+
+                    videoElement.play();
+                    frameLoop(); // 분석 시작
+                };
+
 
             } catch (err) {
                 addLog(`MediaPipe 에러: ${err.message}`);
