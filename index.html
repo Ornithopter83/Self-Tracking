@@ -1,30 +1,14 @@
 ﻿<!DOCTYPE html>
-<html lang="ko">
+<html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PoseLinker Engine</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
     <style>
         body {
             margin: 0;
             background: #000;
-            color: white;
-            font-family: sans-serif;
             overflow: hidden;
-        }
-
-        #log-overlay {
-            position: fixed;
-            top: 10px;
-            left: 10px;
-            background: rgba(0,0,0,0.7);
-            padding: 8px;
-            border-radius: 5px;
-            font-size: 11px;
-            z-index: 100;
-            pointer-events: none;
         }
 
         video {
@@ -33,108 +17,34 @@
             object-fit: contain;
             transform: scaleX(-1);
         }
+
+        #status {
+            position: fixed;
+            top: 10;
+            left: 10;
+            color: #0f0;
+            z-index: 10;
+            font-family: monospace;
+        }
     </style>
 </head>
 <body>
-    <div id="log-overlay">준비 중...</div>
+    <div id="status">연결 대기 중 (C# Script Waiting...)</div>
     <video id="input_video" autoplay playsinline muted></video>
 
     <script>
-        const videoElement = document.getElementById('input_video');
-        const logOverlay = document.getElementById('log-overlay');
+        // C#에서 호출할 수 있도록 전역 변수로 설정
+        var videoElement = document.getElementById('input_video');
+        var statusElement = document.getElementById('status');
 
-        const urlParams = new URLSearchParams(window.location.search);
-        const roomID = urlParams.get('room');
-        const isReceiver = urlParams.get('mode') === 'pc';
-
+        // C#으로 데이터 전송하는 공통 함수
         function sendToCSharp(data) {
             if (window.chrome && window.chrome.webview) {
-                // [핵심 수정] 데이터를 JSON 문자열로 변환하여 전송 (C# 예외 방지)
                 window.chrome.webview.postMessage(JSON.stringify(data));
             }
         }
 
-        function updateLog(msg) {
-            logOverlay.innerText = msg;
-            console.log(msg);
-        }
-
-        const peer = new Peer(isReceiver ? roomID : null, {
-            config: { 'iceServers': [{ url: 'stun:stun.l.google.com:19302' }] }
-        });
-
-        peer.on('open', (id) => {
-            updateLog(isReceiver ? "💻 PC: 연결 대기 중..." : "📱 Mobile: 카메라 시작 중...");
-            if (!isReceiver) startCamera();
-        });
-
-        // [스마트폰] 카메라 가동 및 송출
-        async function startCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }
-                });
-                videoElement.srcObject = stream;
-                peer.call(roomID, stream);
-                updateLog("📱 송신 중...");
-            } catch (err) {
-                updateLog("카메라 에러: " + err.name);
-            }
-        }
-
-        // [PC] 수신 및 MediaPipe 분석
-        if (isReceiver) {
-            peer.on('call', (call) => {
-                call.answer();
-                call.on('stream', (remoteStream) => {
-                    updateLog("💻 스트림 수신 성공");
-                    videoElement.srcObject = remoteStream;
-
-                    // 영상이 실제 재생될 때 크기 정보 전송
-                    videoElement.onplaying = () => {
-                        setTimeout(() => {
-                            sendToCSharp({
-                                type: "RESIZE_WINDOW",
-                                width: videoElement.videoWidth,
-                                height: videoElement.videoHeight
-                            });
-                            initMediaPipe();
-                        }, 500);
-                    };
-                });
-            });
-        }
-
-        function initMediaPipe() {
-            const pose = new Pose({
-                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-            });
-
-            pose.setOptions({
-                modelComplexity: 1,
-                minDetectionConfidence: 0.5,
-                minTrackingConfidence: 0.5
-            });
-
-            pose.onResults((results) => {
-                if (results.poseLandmarks) {
-                    // 관절 데이터를 문자열로 변환하여 전송
-                    sendToCSharp({
-                        type: "POSE_DATA",
-                        landmarks: results.poseLandmarks
-                    });
-
-                    const nose = results.poseLandmarks[0];
-                    updateLog(`분석 중... NoseX: ${nose.x.toFixed(2)}`);
-                }
-            });
-
-            async function detectionLoop() {
-                await pose.send({ image: videoElement });
-                requestAnimationFrame(detectionLoop);
-            }
-            detectionLoop();
-        }
+        console.log("Bridge Ready.");
     </script>
 </body>
 </html>
