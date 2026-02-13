@@ -1,7 +1,9 @@
 ﻿<!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PoseLinker Engine</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
     <style>
@@ -10,155 +12,129 @@
             background: #000;
             color: white;
             font-family: sans-serif;
-            text-align: center;
+            overflow: hidden;
         }
 
-        #log {
+        #log-overlay {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            background: rgba(0,0,0,0.8);
-            font-size: 12px;
-            color: #0f0;
-            text-align: left;
-            padding: 10px;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 8px;
+            border-radius: 5px;
+            font-size: 11px;
             z-index: 100;
-            max-height: 200px;
-            overflow-y: auto;
+            pointer-events: none;
         }
 
         video {
-            width: 100%;
-            max-width: 480px;
+            width: 100vw;
+            height: 100vh;
+            object-fit: contain;
             transform: scaleX(-1);
-            border: 1px solid #333;
-        }
-
-        .indicator {
-            padding: 20px;
-            font-size: 20px;
-            font-weight: bold;
         }
     </style>
 </head>
 <body>
-    <div id="log">로그 기다리는 중...</div>
-    <div id="mode" class="indicator">초기화 중...</div>
-    <video id="webcam" autoplay playsinline muted></video>
+    <div id="log-overlay">준비 중...</div>
+    <video id="input_video" autoplay playsinline muted></video>
 
     <script>
-        const logArea = document.getElementById('log');
-        function addLog(msg) {
-            const div = document.createElement('div');
-            div.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
-            logArea.insertBefore(div, logArea.firstChild);
-        }
+        const videoElement = document.getElementById('input_video');
+        const logOverlay = document.getElementById('log-overlay');
 
         const urlParams = new URLSearchParams(window.location.search);
         const roomID = urlParams.get('room');
         const isReceiver = urlParams.get('mode') === 'pc';
-        const videoElement = document.getElementById('webcam');
 
-        addLog(`모드 확인: ${isReceiver ? "PC" : "Mobile"}`);
-        addLog(`Room ID: ${roomID}`);
+        function sendToCSharp(data) {
+            if (window.chrome && window.chrome.webview) {
+                // [핵심 수정] 데이터를 JSON 문자열로 변환하여 전송 (C# 예외 방지)
+                window.chrome.webview.postMessage(JSON.stringify(data));
+            }
+        }
 
-        const peer = new Peer(isReceiver ? roomID : null);
+        function updateLog(msg) {
+            logOverlay.innerText = msg;
+            console.log(msg);
+        }
+
+        const peer = new Peer(isReceiver ? roomID : null, {
+            config: { 'iceServers': [{ url: 'stun:stun.l.google.com:19302' }] }
+        });
 
         peer.on('open', (id) => {
-            addLog(`PeerJS 서버 연결 성공 (ID: ${id})`);
-            if (!isReceiver) startMobileCamera();
+            updateLog(isReceiver ? "💻 PC: 연결 대기 중..." : "📱 Mobile: 카메라 시작 중...");
+            if (!isReceiver) startCamera();
         });
 
-        // [스마트폰 전용] 카메라 시작
-        async function startMobileCamera() {
+        // [스마트폰] 카메라 가동 및 송출
+        async function startCamera() {
             try {
-                addLog("카메라 권한 요청 중...");
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }
+                });
                 videoElement.srcObject = stream;
-                addLog("카메라 연결 성공! 영상을 PC로 보냅니다.");
-
-                const call = peer.call(roomID, stream);
-                call.on('stream', () => addLog("PC와 영상 스트림 연결됨"));
+                peer.call(roomID, stream);
+                updateLog("📱 송신 중...");
             } catch (err) {
-                addLog(`카메라 에러: ${err.name}`);
+                updateLog("카메라 에러: " + err.name);
             }
         }
 
-        // [PC 전용] 영상 수신 시 분석 시작
-        peer.on('call', (call) => {
-            addLog("스마트폰으로부터 전화 수신!");
-            call.answer();
-            call.on('stream', (remoteStream) => {
-                addLog("영상을 받았습니다. MediaPipe 로딩 시작...");
-                videoElement.srcObject = remoteStream;
-                startMediaPipe();
+        // [PC] 수신 및 MediaPipe 분석
+        if (isReceiver) {
+            peer.on('call', (call) => {
+                call.answer();
+                call.on('stream', (remoteStream) => {
+                    updateLog("💻 스트림 수신 성공");
+                    videoElement.srcObject = remoteStream;
+
+                    // 영상이 실제 재생될 때 크기 정보 전송
+                    videoElement.onplaying = () => {
+                        setTimeout(() => {
+                            sendToCSharp({
+                                type: "RESIZE_WINDOW",
+                                width: videoElement.videoWidth,
+                                height: videoElement.videoHeight
+                            });
+                            initMediaPipe();
+                        }, 500);
+                    };
+                });
             });
-        });
-
-        async function startMediaPipe() {
-            try {
-                const pose = new Pose({
-                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-                });
-
-                pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5 });
-
-                pose.onResults((results) => {
-                    if (results.poseLandmarks) {
-                        const nose = results.poseLandmarks[0];
-                        // PC 화면 제목에 좌표 표시
-                        document.getElementById('mode').innerText = `분석 중: Nose X(${nose.x.toFixed(2)})`;
-
-                        // C#으로 데이터 전송
-                        if (window.chrome && window.chrome.webview) {
-                            window.chrome.webview.postMessage({ type: "POSE_DATA", landmarks: results.poseLandmarks });
-                        }
-                    }
-                });
-
-                addLog("MediaPipe Pose 모델 로딩 완료.");
-
-                async function frameLoop() {
-                    await pose.send({ image: videoElement });
-                    requestAnimationFrame(frameLoop);
-                }
-                videoElement.onloadedmetadata = () => {
-                    // 1. 영상의 실제 크기 가져오기
-                    const videoWidth = videoElement.videoWidth;
-                    const videoHeight = videoElement.videoHeight;
-
-                    // 2. C#으로 크기 정보 전송
-                    if (window.chrome && window.chrome.webview) {
-                        window.chrome.webview.postMessage({
-                            type: "RESIZE_WINDOW",
-                            width: videoWidth,
-                            height: videoHeight
-                        });
-                    }
-
-                    videoElement.play();
-                    frameLoop(); // 분석 시작
-                };
-                videoElement.onplaying = () => { // 영상이 실제로 화면에 그려지기 시작할 때
-                    setTimeout(() => {
-                        const payload = {
-                            type: "RESIZE_WINDOW",
-                            width: videoElement.videoWidth,
-                            height: videoElement.videoHeight
-                        };
-                        if (window.chrome && window.chrome.webview) {
-                            window.chrome.webview.postMessage(payload);
-                        }
-                    }, 500); // 0.5초 대기 후 정확한 해상도 전송
-                };
-
-            } catch (err) {
-                addLog(`MediaPipe 에러: ${err.message}`);
-            }
         }
 
-        peer.on('error', (err) => addLog(`Peer 오류: ${err.type}`));
+        function initMediaPipe() {
+            const pose = new Pose({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+            });
+
+            pose.setOptions({
+                modelComplexity: 1,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+
+            pose.onResults((results) => {
+                if (results.poseLandmarks) {
+                    // 관절 데이터를 문자열로 변환하여 전송
+                    sendToCSharp({
+                        type: "POSE_DATA",
+                        landmarks: results.poseLandmarks
+                    });
+
+                    const nose = results.poseLandmarks[0];
+                    updateLog(`분석 중... NoseX: ${nose.x.toFixed(2)}`);
+                }
+            });
+
+            async function detectionLoop() {
+                await pose.send({ image: videoElement });
+                requestAnimationFrame(detectionLoop);
+            }
+            detectionLoop();
+        }
     </script>
 </body>
 </html>

@@ -122,7 +122,7 @@ namespace Measure_UsingOwnCam
                 Console.WriteLine("Resize Error: " + ex.Message);
             }
         }
-        }
+    }
     // 낱개 관절 좌표 정보
     public class PoseLandmark
     {
