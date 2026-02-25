@@ -1,98 +1,22 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>PoseLinker - WebRTC</title>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
-    <style>
-        body {
-            margin: 0;
-            background: #000;
-            color: white;
-            text-align: center;
-            font-family: sans-serif;
-        }
-
-        video {
-            width: 100%;
-            max-width: 640px;
-            transform: scaleX(-1);
-        }
-
-        #status {
-            padding: 10px;
-            font-size: 14px;
-            color: #0f0;
-        }
-    </style>
+    <meta charset="UTF-8">
+    <title>Self-Tracking Bridge</title>
 </head>
 <body>
-    <div id="status">연결 준비 중...</div>
-    <video id="localVideo" autoplay playsinline muted></video>
+    <div id="self-tracking-config">
+        #DATA#{
+            "camera_url": "http://YOUR_INITIAL_IP:8080/video",
+            "data_server": "http://YOUR_DATA_SERVER:5000/api",
+            "status": "active"
+        }#END#
+    </div>
 
     <script>
-        const urlParams = new URLSearchParams(window.location.search);
-        const roomID = urlParams.get('room'); // WinForm에서 생성한 ID
-        const isReceiver = urlParams.get('mode') === 'pc'; // PC용 WebView2에서 접속할 때
-
-        const statusText = document.getElementById('status');
-        const videoElement = document.getElementById('localVideo');
-
-        // 1. Peer 객체 생성 (무료 클라우드 서버 이용)
-        const peer = new Peer(isReceiver ? roomID : null);
-
-        peer.on('open', (id) => {
-            statusText.innerText = isReceiver ? "수신 대기 중..." : "송신 준비 완료!";
-            if (!isReceiver) startCamera(); // 스마트폰이면 카메라 시작
-        });
-
-        // 2. [스마트폰] 카메라 가동 및 PC로 전화 걸기
-        async function startCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
-                videoElement.srcObject = stream;
-
-                // PC(roomID)에게 영상 송출
-                const call = peer.call(roomID, stream);
-                statusText.innerText = "영상 전송 중...";
-            } catch (err) {
-                statusText.innerText = "카메라 권한 거부됨";
-            }
-        }
-
-        // 3. [PC/WebView2] 스마트폰으로부터 영상 수신
-        peer.on('call', (call) => {
-            call.answer(); // 전화 받기
-            call.on('stream', (remoteStream) => {
-                videoElement.srcObject = remoteStream;
-                statusText.innerText = "데이터 분석 중...";
-                initMediaPipe(videoElement); // 수신된 영상으로 분석 시작
-            });
-        });
-
-        // 4. [분석 엔진] MediaPipe Pose 연동
-        function initMediaPipe(video) {
-            const pose = new Pose({
-                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-            });
-
-            pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5 });
-
-            pose.onResults((results) => {
-                if (!results.poseLandmarks) return;
-
-                // 추출된 좌표(JSON)를 WinForm(C#)으로 전송
-                if (window.chrome && window.chrome.webview) {
-                    window.chrome.webview.postMessage(results.poseLandmarks);
-                }
-            });
-
-            // 프레임마다 분석 루프
-            async function detectionLoop() {
-                await pose.send({ image: video });
-                requestAnimationFrame(detectionLoop);
-            }
-            video.onloadedmetadata = detectionLoop;
+        // 향후 확장성: 웹 브라우저에서 분석 데이터를 시각화하고 싶을 때 사용
+        function onDataReceived(data) {
+            console.log("Analysis from Client:", data);
         }
     </script>
 </body>
